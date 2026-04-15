@@ -48,16 +48,6 @@ promptInput = function
 	return lines.join(EOL)
 end function
 
-// Clean up fancy (non-ASCII) characters the LLM is wont to use.
-cleanText = function(s)
-	s = s.replace("—", "--")
-	s = s.replace("’", "'")
-	s = s.replace("‘", "'")
-	s = s.replace("“", """")
-	s = s.replace("”", """")
-	return s
-end function
-
 // Convert the given map to JSON, but watch for special strings
 // "<true>" and "<false>", and convert those to plain true and 
 // false values.  (We can't easily represent those otherwise since
@@ -100,6 +90,27 @@ getResponse = function(prompt, temperature=0.5)
 	return bestOutput.content[0].text
 end function
 
+// Replace some fancy (non-ASCII) characters the LLM is wont to use.
+cleanText = function(s)
+	s = s.replace("—", "--")
+	s = s.replace("’", "'")
+	s = s.replace("‘", "'")
+	s = s.replace("“", """")
+	s = s.replace("”", """")
+	return s
+end function
+
+// Print a possibly long response, with text wrapping and paging.
+printNicely = function(s, textColor="#FF8000")
+	text.color = textColor
+	if s isa list then lines = s else lines = s.split(EOL)
+	for i in range(lines.len-1, 0, -1)
+		lines = lines[:i] + lines[i].wrap + lines[i+1:]
+	end for
+	for i in lines.indexes; lines[i] = cleanText(lines[i]); end for
+	pageThrough lines
+end function
+
 // Handle a response, given as a dictionary with "type" etc.
 // as defined in instructions.txt.
 handleResponse = function(data)
@@ -108,20 +119,18 @@ handleResponse = function(data)
 		pprint stackTrace
 		exit
 	end if
+	addToHistory data
 	if not data.hasIndex("type") then
 		addToHistory "ERROR: response must be a JSON object with `type` per your instructions."
 	else if data.type == "message" then
-		text.color = color.orange
-		print cleanText(data.content)
+		printNicely data.content
 	else if data.type == "question" then
-		text.color = color.orange
-		print cleanText(data.content)
+		printNicely data.content
 		text.color = color.gray; print "==> ", ""
 		text.color = color.green
-		globals.currentUserInput += EOL + input
+		addToHistory ["", "--- User response ---", input, "--- End user response ---"].join(EOL)
 	else if data.type == "finish" then
-		text.color = color.yellow
-		print cleanText(data.content)
+		printNicely data.content, color.yellow
 		globals.currentUserInput = ""
 	else if data.type == "tool_call" then
 		handleToolCall data

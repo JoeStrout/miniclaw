@@ -70,6 +70,9 @@ end function
 read_file = function(args)
 	path = args.get("path"); if not path then return errMissingArg("path")
 	if not file.exists(path) then return err("Invalid path `" + path + "`")
+	fileSize = file.info(path).size
+	if fileSize > 32768 then return err("File at `" + path + "` is too big (" +
+	  fileSize + " bytes).  Use head_file or tail_file as needed.")
 	data = file.readLines(path)
 	result = okResult
 	result.path = path

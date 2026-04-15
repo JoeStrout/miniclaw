@@ -10,7 +10,7 @@ Possible outputs:
 3. {"type":"message","content":"..."}
 4. {"type":"finish","content":"..."}
 
-Use the "question" type output to ask the user clarifying questions on the current task.  Use "message" for intermediate results, and "finish" for your final answer.
+Use the "question" type output to ask the user clarifying questions on the current task.  Use "finish" when the task is complete or the question is fully answered.  Only use "message" when you have partial results to share AND intend to continue with more tool calls — never use "message" as a final answer.
 
 The "reason" argument on "tool_call" should be a short explanation of your purpose in calling that tool (for debugging purposes).
 
