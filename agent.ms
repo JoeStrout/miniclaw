@@ -72,6 +72,7 @@ instructions = file.readLines("/usr/instructions.txt").join(EOL)
 currentUserInput = ""
 history = []
 historyLen = 0  // (sum of the length of all history entries)
+lastMessage = ""
 
 // Get the API key from our secret file.
 apiKey = function
@@ -169,13 +170,12 @@ printNicely = function(s, textColor="#FF8000")
 		runs = styledText.parseMarkup(line)
 		linesTillPause = printer.printStyleRuns(runs, linesTillPause)
 	end for
-	print "(linesTillPause: " + linesTillPause + ")"
-//	if s isa list then lines = s else lines = s.split(EOL)
-//	for i in range(lines.len-1, 0, -1)
-//		lines = lines[:i] + lines[i].wrap + lines[i+1:]
-//	end for
-//	for i in lines.indexes; lines[i] = cleanText(lines[i]); end for
-//	pageThrough lines
+end function
+
+// Determine whether two strings are largely the same.
+verySimilar = function(s1, s2)
+	if s1.len > s2.len*1.25 or s2.len > s1.len*1.25 then return false
+	return s1.editDistance(s2) / s1.len < 0.1
 end function
 
 // Handle a response, given as a dictionary with "type" etc.
@@ -191,13 +191,20 @@ handleResponse = function(data)
 		addToHistory "ERROR: response must be a JSON object with `type` per your instructions."
 	else if data.type == "message" then
 		printNicely data.content
+		globals.lastMessage = data.content
 	else if data.type == "question" then
 		printNicely data.content
 		text.color = color.gray; print "==> ", ""
-		text.color = color.green
+		text.color = "#00AA00"
 		addToHistory ["", "--- User response ---", input, "--- End user response ---"].join(EOL)
+		text.color = color.gray
 	else if data.type == "finish" then
-		printNicely data.content
+		// Sometimes the LLM repeats its last message (from "message")
+		// in the "finish" output, I guess when it realizes it has no more
+		// to say.  Detect this and suppress the redundant output.
+		if not verySimilar(data.content, lastMessage) then
+			printNicely data.content
+		end if
 		globals.currentUserInput = ""
 	else if data.type == "tool_call" then
 		handleToolCall data
@@ -207,6 +214,8 @@ handleResponse = function(data)
 	end if	
 end function
 
+// Handle a tool all.  The data here is the same map passed to handleResponse,
+// but separated out into its own method so we can focus on this common case.
 handleToolCall = function(data)
 	toolName = data.get("tool", "(undefined)")
 	s = "Invoking " + toolName
@@ -214,7 +223,7 @@ handleToolCall = function(data)
 	text.color = color.gray
 	print s
 	args = data.get("arguments", {})
-	print args
+	//print args
 	if tools.hasIndex(toolName) then
 		f = @tools[toolName]
 		result = f(args)
@@ -222,8 +231,6 @@ handleToolCall = function(data)
 		addToHistory jsonify(result)
 	else
 		addToHistory tools.err("Unknown tool `" + toolName + "`")
-		print history[-1]
-		exit
 	end if
 end function
 
@@ -231,10 +238,14 @@ end function
 // keep calling the model with the results of its tool uses, updating
 // history accordingly.
 mainLoop = function
+	if not file.exists("/usr/workspace") then file.makedir("/usr/workspace")
+	clear
+	text.color = color.orange
+	print "Hi!  How can I help you today?"
 	while true
 		if not currentUserInput then
 			text.color = color.gray; print "==> ", ""
-			text.color = color.green
+			text.color = "#00AA00"
 			globals.currentUserInput = input
 			text.color = color.gray
 		end if
@@ -248,5 +259,4 @@ mainLoop = function
 	end while
 end function
 
-clear
 if locals == globals then mainLoop
