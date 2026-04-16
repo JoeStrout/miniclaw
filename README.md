@@ -10,4 +10,4 @@ This project creates an agent, i.e., a software bot that can use multi-step tool
 
 2. Mini Micro is a sandboxed environment -- no matter how the agent goes rogue or what bugs the code might contain, it can't hurt anything on your computer other than, at worst, the agent's own files.
 
-I'll be posting more about this on dev.to soon.  Stay tuned!
+For a write-up of how this works, see the [dev.to post about it](https://dev.to/joestrout/miniclaw-a-tiny-llm-agent-for-mini-micro-4akf).
