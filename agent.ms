@@ -1,8 +1,68 @@
 import "importUtil"
-ensureImport ["json", "grfon", "stringUtil", "mapUtil", "dateTime"]
+ensureImport ["json", "grfon", "stringUtil", "mapUtil", "dateTime", "styledText"]
 ensureImport "tools"
 
 EOL = char(10)
+
+// Helper function to prompt the user that there is more output,
+// and wait for their response.  Return true to continue, or
+// false to cancel further output.
+pauseForMore = function
+	text.inverse = true; print "[more]", ""; text.inverse = false
+	bail = false
+	while not bail
+		k = key.get
+		ikey = code(k)
+		if ikey == 27 or k == "q" or k == "Q" then bail = true
+		if ikey == 10 or ikey == 13 or ikey == 3 or k == " " then break
+		yield
+	end while
+	text.column = 0; print " " * 7, ""; text.column = 0
+	return not bail
+end function
+
+
+// Make a custom version of TextPrinter.printStyleRuns that pauses every
+// 25 lines, similar to `dir` and `pageThrough` (in startup.ms).  (Also,
+// it ignores Printer.y and just prints line by line.)  Returns new
+// number of lines till we should pause.
+MyTextPrinter = new styledText.TextPrinter
+MyTextPrinter.printStyleRuns = function(runs, linesTillPause = 24)
+	text.column = self.x
+	if self.wrapTo == null then self.wrapTo = text.column
+	if linesTillPause < 1 then
+		if not pauseForMore then return 24
+		linesTillPause = 24
+	end if
+	for styleRun in runs
+		self.applyStyle styleRun
+		while self.wrapAt - text.column < styleRun.text.len
+			partialText = self.cutToFit(styleRun, 
+			  self.wrapAt - text.column, text.column <= self.wrapTo)
+			text.print partialText
+			text.column = self.wrapTo
+			linesTillPause -= 1
+			if linesTillPause < 1 then
+				if not pauseForMore then break
+				linesTillPause = 24
+			end if
+		end while
+		text.print styleRun.text, ""
+		self.restore
+	end for
+	text.print
+	linesTillPause -= 1
+	self.x = self.wrapTo
+	return linesTillPause
+end function
+
+// And fix a bug in the current release version (ignores code style):
+MyTextPrinter.applyStyle = function(style)
+	super.applyStyle style
+	if style.code then text.color = self.color.code
+end function
+MyTextPrinter.color.code = color.aqua
+MyTextPrinter.wrapAt = 67
 
 // Get the "instructions" part of the prompt from a file.
 // (These are always the same.)
@@ -102,13 +162,20 @@ end function
 
 // Print a possibly long response, with text wrapping and paging.
 printNicely = function(s, textColor="#FF8000")
-	text.color = textColor
-	if s isa list then lines = s else lines = s.split(EOL)
-	for i in range(lines.len-1, 0, -1)
-		lines = lines[:i] + lines[i].wrap + lines[i+1:]
+	printer = new MyTextPrinter
+	printer.color.normal = textColor
+	linesTillPause = 24
+	for line in cleanText(s).split(EOL)
+		runs = styledText.parseMarkup(line)
+		linesTillPause = printer.printStyleRuns(runs, linesTillPause)
 	end for
-	for i in lines.indexes; lines[i] = cleanText(lines[i]); end for
-	pageThrough lines
+	print "(linesTillPause: " + linesTillPause + ")"
+//	if s isa list then lines = s else lines = s.split(EOL)
+//	for i in range(lines.len-1, 0, -1)
+//		lines = lines[:i] + lines[i].wrap + lines[i+1:]
+//	end for
+//	for i in lines.indexes; lines[i] = cleanText(lines[i]); end for
+//	pageThrough lines
 end function
 
 // Handle a response, given as a dictionary with "type" etc.
@@ -130,7 +197,7 @@ handleResponse = function(data)
 		text.color = color.green
 		addToHistory ["", "--- User response ---", input, "--- End user response ---"].join(EOL)
 	else if data.type == "finish" then
-		printNicely data.content, color.yellow
+		printNicely data.content
 		globals.currentUserInput = ""
 	else if data.type == "tool_call" then
 		handleToolCall data
@@ -173,7 +240,11 @@ mainLoop = function
 		end if
 		response = getResponse
 		respData = json.parse(response)
-		handleResponse respData
+		if respData == null then
+			addToHistory("**IMPORTANT:** You must format your response as a JSON object!")
+		else
+			handleResponse respData
+		end if
 	end while
 end function
 
